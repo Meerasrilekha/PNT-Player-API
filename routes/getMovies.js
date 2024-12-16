@@ -30,6 +30,35 @@ router.get('/getMovies/:genreID?', async (req, res) => {
   }
 });
 
+// Endpoint to get recently uploaded Movies
+router.get('/getRecentAddedMovies', async (req, res) => {
+  try {
+      // Fetch the recently uploaded Movies, sorted by uploadTime (newest first)
+      const recentMovies = await Movie.find({})
+          .sort({ uploadTime: -1 }) // Sort by uploadTime field, descending
+          .limit(20); // Limit to the most recent 20 Movies
+
+      // Respond with the list of Movies
+      res.status(200).json({ success: true, movies: recentMovies });
+  } catch (error) {
+      console.error('Error fetching recent shows:', error);
+      res.status(500).json({ success: false, message: 'Error fetching recent shows' });
+  }
+});
+
+// Endpoint to get the latest 20 released movies
+router.get('/latest-released-movies', async (req, res) => {
+  try {
+    const latestMovies = await Movie.find()
+      .sort({ releaseDate: -1 }) // Sort by releaseDate in descending order
+      .limit(20);               // Limit the results to 20
+    res.status(200).json(latestMovies);
+  } catch (error) {
+    console.error('Error fetching latest releases:', error);
+    res.status(500).json({ error: 'Failed to fetch latest releases' });
+  }
+});
+
 
 router.get('/getSimilarMovies/:movieID', async (req, res) => {
   try {
@@ -71,7 +100,6 @@ const getUniqueGenres = (movies) => {
 
   return uniqueGenres;
 };
-
 
 router.get('/getAllMoviesGenres', async (req, res) => {
   try {

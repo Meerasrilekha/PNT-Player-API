@@ -30,6 +30,35 @@ const getUniqueGenres = (shows) => {
   return uniqueGenres;
 };
 
+// Endpoint to get recently uploaded shows
+router.get('/getRecentShows', async (req, res) => {
+  try {
+      // Fetch the recently uploaded shows, sorted by uploadTime (newest first)
+      const recentShows = await Shows.find({})
+          .sort({ uploadTime: -1 }) // Sort by uploadTime field, descending
+          .limit(20); // Limit to the most recent 20 shows
+
+      // Respond with the list of shows
+      res.status(200).json({ success: true, shows: recentShows });
+  } catch (error) {
+      console.error('Error fetching recent shows:', error);
+      res.status(500).json({ success: false, message: 'Error fetching recent shows' });
+  }
+});
+
+// Endpoint to get the latest 20 released shows
+router.get('/latest-released-shows', async (req, res) => {
+  try {
+    const latestShows = await Shows.find()
+      .sort({ releaseDate: -1 }) // Sort by releaseDate in descending order
+      .limit(20);               // Limit the results to 20
+    res.status(200).json(latestShows);
+  } catch (error) {
+    console.error('Error fetching latest releases:', error);
+    res.status(500).json({ error: 'Failed to fetch latest releases' });
+  }
+});
+
 router.get('/getAllShowsGenres', async (req, res) => {
   try {
     // Retrieve all shows from the database

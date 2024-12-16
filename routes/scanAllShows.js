@@ -11,6 +11,7 @@ const absolutePath = path.resolve(directory);
 
 let clients = [];
 
+
 async function scanDirectory(dir, filenames = [], titles = [], filepaths = [], ignoredShowDirNames = []) {
     const files = fs.readdirSync(dir);
 
@@ -25,23 +26,42 @@ async function scanDirectory(dir, filenames = [], titles = [], filepaths = [], i
             }
             await scanDirectory(filePath, filenames, titles, filepaths, ignoredShowDirNames);
         } else {
-            const showTitleMatch = file.match(/^(.+?)\.S\d{2}/);
-            let showTitle = showTitleMatch ? showTitleMatch[1] : file;
-            showTitle = showTitle.replace(/\./g, ' ');
-            if (!titles.includes(showTitle)) {
-                titles.push(showTitle);
+            // Skip .srt files
+            if (file.endsWith('.srt')) {
+                // console.log(`Skipping .srt file: ${file}`);
+                continue;
             }
-            const filefullpath = path.join(dir, file);
-            const filepathWithoutPrefix = filefullpath
-                .replace(/.*?TV Shows\\/, '')
-                .replace(/\\/g, '/');
-            filenames.push(file);
-            filepaths.push(filepathWithoutPrefix);
+
+            // Regular expression to capture the show title and season
+            const showTitleMatch = file.match(/^(.+?)\s*-?\s*S(\d{2})/);
+
+            if (showTitleMatch) {
+                let showTitle = showTitleMatch[1].replace(/\./g, ' ').trim(); // Clean up the show title
+
+                // Remove the year part (if it exists) after capturing the show title
+                showTitle = showTitle.replace(/\(\d{4}\)/, '').replace(/\d{4}/, '').trim();
+
+                if (!titles.includes(showTitle)) {
+                    titles.push(showTitle); // Add the formatted title to the titles list
+                }
+
+                // console.log("Show Title:", showTitle); // For debugging
+
+                // Generate full and relative file paths
+                const fileFullPath = path.join(dir, file);
+                const filePathWithoutPrefix = fileFullPath
+                    .replace(/.*?TV Shows\\/, '') // Adjust to your specific directory structure
+                    .replace(/\\/g, '/'); // Normalize path separators to '/'
+
+                filenames.push(file);
+                filepaths.push(filePathWithoutPrefix);
+            }
         }
     }
 
     return { titles, filenames, filepaths };
 }
+
 
 async function fetchDetailedShowDetails(showID, options) {
     const url = `https://api.themoviedb.org/3/tv/${showID}?language=en-US`;
@@ -97,98 +117,135 @@ async function fetchDetailedShowDetails(showID, options) {
 }
 
 async function addDownloadLink(shows, filePaths) {
-    // console.log("Show name", shows)
     shows.forEach(show => {
         const { showDetails } = show;
-
-        // console.log("Show Name", showDetails.name.replace(/:/g, '').replace(/,/g, '').replace(/\s/g, '.').toLowerCase())
-
         const { seasons } = showDetails;
+
         seasons.forEach(season => {
             const { season_number, episodes } = season;
 
-            // console.log("Show season num",season_number)
-
             episodes.forEach(episode => {
-                // console.log("Show episodename",episode.episode_number)
-                // console.log("Name", episode.name)
-                // console.log("Download Link", episode.downloadLink)
                 const formattedSeason = String(season_number).padStart(2, '0');
                 const formattedEpisode = String(episode.episode_number).padStart(2, '0');
                 const episodeDesignation = `S${formattedSeason}E${formattedEpisode}`;
 
-                // console.log(`${showDetails.name}.S${formattedSeason}E${formattedEpisode}`)
+                // Debug log to check the show name and episode designation
+                console.log("Show Name:", showDetails.name);
+                console.log("Formatted Season:", formattedSeason);
+                console.log("Formatted Episode:", formattedEpisode);
+                console.log("Episode Designation:", episodeDesignation);
 
-                // const matchingFilePath = filePaths.find(filePath =>
-                //     filePath.toLowerCase().includes(showDetails.name.replace(/:/g, '').replace(/,/g, '').replace(/\s/g, '.').toLowerCase()) &&
-                //     filePath.includes(`S${formattedSeason}E${formattedEpisode}`)
-                // );
+                // Remove any year (4 digits) from the show name
+                const showNameWithoutYear = showDetails.name.replace(/\(\d{4}\)/, '').trim();
 
+                // Match file path by checking if show name (without year) and episode designation are part of the file path
                 const matchingFilePath = filePaths.find(filePath =>
-                    filePath.toLowerCase().includes(showDetails.name.replace(/:/g, '').replace(/,/g, '').replace(/\s/g, '.').toLowerCase()) &&
+                    filePath.toLowerCase().includes(showNameWithoutYear.toLowerCase().replace(/\s+/g, ' ').replace(/[:.]/g, '').trim()) &&
                     filePath.toLowerCase().includes(episodeDesignation.toLowerCase())
                 );
 
-                console.log("Matching file path", matchingFilePath)
-                // const filePath = matchingFilePath ? `http://192.168.0.148:8080/${matchingFilePath.replace(/\s/g, '%20')}` : "Filepath not found";
-
-                // episode.downloadLink = filePath
+                // Log to inspect the matching file path
+                console.log("Matching File Path:", matchingFilePath);
 
                 const filePathWithoutPrefix = matchingFilePath ? `${process.env.HTTP_SERVER_ADDR}/shows/${matchingFilePath.replace(/^.*?shows[\\/]/i, '').replace(/\s/g, '%20')}` : "Filepath not found";
 
+                // Update the episode download link
                 episode.downloadLink = filePathWithoutPrefix;
-
-                // console.log(`Show: ${showDetails.name}, Season: S${formattedSeason}E${formattedEpisode}, Filepath: ${filePath}`)
+                console.log(`Download Link for ${episodeDesignation}:`, episode.downloadLink);
             });
         });
-
     });
 
-    return shows
+    return shows;
 }
 
+function normalizeTitle(title) {
+    // Remove all non-alphanumeric characters and convert to lowercase
+    return title.replace(/[^a-z0-9\s]/gi, '').toLowerCase().trim();
+}
 
 router.post('/scanAllLocalShows', async (req, res) => {
-
     try {
-        await User.updateMany({}, { $set: { watchedShows: [], showsMylist: [] } });
-        // await Shows.deleteMany({});
-        
-        // Delete all shows except those with ignoreTitleOnScan set to true
-        await Shows.deleteMany({ ignoreTitleOnScan: { $ne: true } });
-
-        // Get all showDirName of shows where ignoreTitleOnScan is true
-        const ignoredShows = await Shows.find({ ignoreTitleOnScan: true }, 'showDirName');
-        const ignoredShowDirNames = ignoredShows.map(show => show.showDirName);
-        console.log("Ignored shows are",ignoredShowDirNames)
-
         res.status(200).send({ message: 'Processing started' });
 
-        // const { titles, filenames, filepaths } = await scanDirectory(absolutePath);
-        const { titles, filenames, filepaths } = await scanDirectory(absolutePath, [], [], [], ignoredShowDirNames);
-        // console.log("Filepaths", filepaths);
+        // Fetch all shows in the database
+        const existingShows = await Shows.find({}, 'name');
+        const existingTitles = existingShows.map(show => show.name);
+        console.log('Existing titles in the database:', existingTitles);
 
+        // // Ignore shows with `ignoreTitleOnScan` set to true
+        const ignoredShows = await Shows.find({ ignoreTitleOnScan: true }, 'name');
+        const ignoredShowDirNames = ignoredShows.map(show => show.name);
+
+        // Scan the directory for new shows
+        const { titles, filenames, filepaths } = await scanDirectory(
+            absolutePath,
+            [],
+            [],
+            [],
+            ignoredShowDirNames
+        );
+        console.log('Scanned titles from directory:', titles);
+
+        // Remove titles no longer present in the directory (normalize for comparison)
+        const titlesToRemove = existingTitles.filter(
+            title => !titles.some(scannedTitle => normalizeTitle(title) === normalizeTitle(scannedTitle))
+        );
+        console.log('Titles to remove:', titlesToRemove);
+
+        for (const title of titlesToRemove) {
+            try {
+                const showToRemove = await Shows.findOne({ name: title });
+                if (!showToRemove) continue;
+
+                // Delete the show from the database
+                await Shows.deleteOne({ name: title });
+
+                // Remove references from users' watchedShows and showsMylist
+                await User.updateMany(
+                    { "watchedShows.showID": showToRemove._id },
+                    { $pull: { watchedShows: { showID: showToRemove._id } } }
+                );
+                await User.updateMany(
+                    { showsMylist: showToRemove._id },
+                    { $pull: { showsMylist: showToRemove._id } }
+                );
+
+                console.log(`Removed show: ${title}`);
+            } catch (error) {
+                console.error(`Error removing show '${title}':`, error);
+            }
+        }
+
+        // Process and add new shows
         const shows = [];
-
         const totalShows = titles.length;
         let processedShows = 0;
 
         for (const title of titles) {
-
+            // Normalize and check if the show exists
+            const normalizedTitle = normalizeTitle(title);
+            const showExists = existingTitles.some(existingTitle => normalizeTitle(existingTitle) === normalizedTitle);
+            if (showExists) {
+                console.log(`Show '${title}' already exists. Skipping...`);
+                continue;
+            }
+            // Notify clients about the progress
             clients.forEach(client => {
-                console.log(`Sending update to client: ${title}`);
-                client.res.write(`data: ${JSON.stringify({ index: processedShows + 1, total: totalShows, title: title })}\n\n`);
+                client.res.write(`data: ${JSON.stringify({ index: processedShows + 1, total: totalShows, title })}\n\n`);
             });
-            const url = `https://api.themoviedb.org/3/search/tv?query=${encodeURIComponent(title)}&include_adult=false&language=en-US&page=1`;
-            const options = {
-                method: 'GET',
-                headers: {
-                    accept: 'application/json',
-                    Authorization: process.env.TMDB_AUTH_KEY
-                }
-            };
 
             try {
+                // Fetch show details from TMDB
+                const url = `https://api.themoviedb.org/3/search/tv?query=${encodeURIComponent(title)}&include_adult=false&language=en-US&page=1`;
+                const options = {
+                    method: 'GET',
+                    headers: {
+                        accept: 'application/json',
+                        Authorization: process.env.TMDB_AUTH_KEY
+                    }
+                };
+
                 const responseData = await fetch(url, options);
                 const result = await responseData.json();
 
@@ -203,59 +260,46 @@ router.post('/scanAllLocalShows', async (req, res) => {
                     }
                 }
             } catch (error) {
-                console.error(`Error fetching details for ${title}:`, error);
+                console.error(`Error fetching details for '${title}':`, error);
             }
             processedShows++;
         }
 
-        // console.log("All TV Shows are", shows);
-
-        var modifiedShowDetails = await addDownloadLink(shows, filepaths);
-
+        // Add download links and save new shows to the database
+        const modifiedShowDetails = await addDownloadLink(shows, filepaths);
         for (const modifiedShow of modifiedShowDetails) {
             try {
-                const existingShow = await Shows.findOne({ name: modifiedShow.showDetails.name });
-                if (existingShow) {
-                    console.log(`Show '${modifiedShow.showDetails.name}' already exists. Skipping...`);
-                } else {
-
-                    // console.log("Backdrop",modifiedShow.showDetails)
-                    // Use your existing code for adding shows manually
-                    const newShowsDocument = new Shows({
-                        genres: modifiedShow.showDetails.genres,
-                        overview: modifiedShow.showDetails.overview,
-                        posterPath: modifiedShow.showDetails.poster_path,
-                        backdropPath: modifiedShow.showDetails.backdrop_path,
-                        releaseDate: new Date(modifiedShow.showDetails.first_air_date),
-                        name: modifiedShow.showDetails.name,
-                        ratings: modifiedShow.showDetails.vote_average,
-                        ignoreTitleOnScan: 'false',
-                        showDirName: '',
-                        seasons: modifiedShow.showDetails.seasons.map(season => ({
-                            season_number: season.season_number,
-                            episodes: season.episodes.map(episode => ({
-                                episode_number: episode.episode_number,
-                                name: episode.name,
-                                runtime: episode.runtime,
-                                overview: episode.overview,
-                                poster: episode.poster,
-                                downloadLink: episode.downloadLink
-                            }))
+                const newShowsDocument = new Shows({
+                    genres: modifiedShow.showDetails.genres,
+                    overview: modifiedShow.showDetails.overview,
+                    posterPath: modifiedShow.showDetails.poster_path,
+                    backdropPath: modifiedShow.showDetails.backdrop_path,
+                    releaseDate: new Date(modifiedShow.showDetails.first_air_date),
+                    name: modifiedShow.showDetails.name,
+                    ratings: modifiedShow.showDetails.vote_average,
+                    ignoreTitleOnScan: false,
+                    showDirName: '',
+                    seasons: modifiedShow.showDetails.seasons.map(season => ({
+                        season_number: season.season_number,
+                        episodes: season.episodes.map(episode => ({
+                            episode_number: episode.episode_number,
+                            name: episode.name,
+                            runtime: episode.runtime,
+                            overview: episode.overview,
+                            poster: episode.poster,
+                            downloadLink: episode.downloadLink
                         }))
-                    });
+                    }))
+                });
 
-                    // Save the document to the database
-                    const savedShows = await newShowsDocument.save();
-                    // console.log('Show saved to MongoDB:', savedShows);
-                }
+                await newShowsDocument.save();
+                console.log(`Added new show: ${modifiedShow.showDetails.name}`);
             } catch (error) {
                 console.error('Error saving show to MongoDB:', error);
             }
         }
 
-        // res.json(modifiedShowDetails);
-        // Send completion update to all connected clients
-        console.log('Sending completion update to all clients');
+        // Notify clients of completion
         clients.forEach(client => client.res.write('data: {"complete": true}\n\n'));
         clients.forEach(client => client.res.end());
         clients.length = 0;
@@ -263,7 +307,6 @@ router.post('/scanAllLocalShows', async (req, res) => {
         console.error('Error scanning shows:', error);
         res.status(500).send('Internal Server Error');
     }
-
 });
 
 

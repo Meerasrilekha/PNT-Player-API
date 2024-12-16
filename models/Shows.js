@@ -10,6 +10,10 @@ const showsSchema = new mongoose.Schema({
     ratings: Number,
     ignoreTitleOnScan: Boolean,
     showDirName: String,
+    uploadTime: {  // Add the uploadTime field
+        type: Date,
+        default: Date.now // Automatically set to the current date and time
+    },
     seasons: [{
         season_number: Number,
         episodes: [{

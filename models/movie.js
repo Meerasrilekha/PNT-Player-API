@@ -21,6 +21,10 @@ const movieSchema = new mongoose.Schema({
     logos: String,
     downloadLink: String,
     ratings: Number,
+    uploadTime: {  // Add the uploadTime field
+        type: Date,
+        default: Date.now // Automatically set to the current date and time
+    },
     ignoreTitleOnScan: Boolean
 });
 

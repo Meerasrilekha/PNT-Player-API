@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const Shows = require('../models/Shows');
+const Users = require("../models/User")
 
 router.get('/delete-show', async (req, res) => {
     try {
@@ -16,14 +17,24 @@ router.get('/delete-show', async (req, res) => {
 
 router.post('/delete-show/:id', async (req, res) => {
     try {
-        const deleteShow = await Shows.findOneAndDelete({ _id: req.params.id });
+        const showId = req.params.id;
+        const deleteShow = await Shows.findOneAndDelete({ _id: showId });
 
-        // // Remove the movie from users' mylist
-        // await User.updateMany({}, { $pull: { mylist: req.params.id } });
+        if (!deleteShow) {
+            return res.status(404).send('Show not found');
+        }
 
-        // // Remove the movie from users' watchedMovies
-        // await User.updateMany({}, { $pull: { "watchedMovies": { movie: req.params.id } } });
+        // Remove the show from users' showsMylist
+        await Users.updateMany(
+            { showsMylist: showId },
+            { $pull: { showsMylist: showId } }
+        );
 
+        // Remove the show references from users' watchedShows array
+        await Users.updateMany(
+            { 'watchedShows.showID': showId },
+            { $pull: { watchedShows: { showID: showId } } }
+        );
         const shows = await Shows.find();
         res.render('deleteShow', { shows, successMessage: 'Movie deleted successfully!' });
     } catch (error) {
