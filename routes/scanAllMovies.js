@@ -88,6 +88,7 @@ router.post('/scanAllLocalMovies', async (req, res) => {
                     const movieDetailsResult = await movieDetailsResponse.json();
 
                     const genreNames = movieDetailsResult.genres.map(genre => genre.name);
+                    const genreIds = movieDetailsResult.genres.map(genre => genre.id);
                     const downloadLink = `${process.env.HTTP_SERVER_ADDR}/movies/${encodeURIComponent(movie.filename)}`;
 
                     const newMovie = new Movie({
@@ -95,6 +96,7 @@ router.post('/scanAllLocalMovies', async (req, res) => {
                         title: movieDetailsResult.title,
                         originalTitle: movieDetailsResult.original_title,
                         genres: genreNames,
+                        genreIds: genreIds,
                         overview: movieDetailsResult.overview,
                         releaseDate: movieDetailsResult.release_date,
                         runtime: movieDetailsResult.runtime,
