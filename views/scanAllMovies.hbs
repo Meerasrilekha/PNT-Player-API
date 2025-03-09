@@ -100,7 +100,7 @@
 
                     document.getElementById('progressBarInner').style.width = percentage + '%';
                     document.getElementById('progressBarInner').innerText = percentage + '%';
-                    document.getElementById('progressText').innerText = `Processed ${data.index} of ${data.total} movies: ${data.title}`;
+                    document.getElementById('progressText').innerText = `Processed ${data.index} of ${data.total} movies: ${data.movie.movieName}`;
 
                     if (data.index === data.total) {
                         document.getElementById('progressText').innerText = 'All movies have been processed.';
